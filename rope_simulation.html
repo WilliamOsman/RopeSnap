@@ -1,0 +1,1617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rope Cut Physics Simulation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0a0f; --panel: #12121a; --border: #2a2a3a;
+    --text: #c8c8d8; --text-dim: #6a6a7a;
+    --accent: #ff3333; --accent2: #33ff88; --accent3: #3388ff;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  #main-row {
+    display: flex; flex: 1; min-height: 0;
+  }
+  #sidebar {
+    width: 410px; min-width: 410px;
+    background: var(--panel); border-right: 1px solid var(--border);
+    padding: 16px 24px 16px 16px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  #sidebar h1 {
+    font-size: 14px; font-weight: 700; color: var(--accent);
+    letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px;
+  }
+  .section-label {
+    font-size: 10px; color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: 1.5px; margin-top: 6px;
+    border-top: 1px solid var(--border); padding-top: 6px;
+    cursor: pointer; user-select: none;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .section-label:hover { color: var(--text); }
+  .collapse-arrow { font-size: 12px; transition: transform 0.2s; }
+  .section-label.collapsed .collapse-arrow { transform: rotate(-90deg); }
+  .section-body {
+    display: flex; flex-direction: column; gap: 8px;
+    overflow: hidden; transition: max-height 0.25s ease;
+    padding: 6px 0;
+  }
+  .section-body.collapsed { max-height: 0 !important; padding: 0; margin: 0; }
+  .param-row { display: flex; align-items: center; gap: 6px; min-height: 22px; }
+  .param-row label {
+    font-size: 11px; color: var(--text);
+    width: 120px; min-width: 120px; flex-shrink: 0;
+  }
+  .param-row input[type="range"] {
+    flex: 1; min-width: 0; accent-color: var(--accent); height: 4px;
+  }
+  .param-row .val {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 11px; font-weight: 500; color: var(--accent2);
+    width: 80px; min-width: 80px; flex-shrink: 0;
+    text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+    background: transparent; border: 1px solid transparent;
+    padding: 1px 4px; border-radius: 2px; outline: none;
+    cursor: text;
+  }
+  .param-row .val:hover { border-color: var(--border); }
+  .param-row .val:focus {
+    border-color: var(--accent2); background: var(--bg);
+    color: #fff;
+  }
+  .btn-row { display: flex; gap: 8px; margin-top: 6px; }
+  button {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+    padding: 8px 14px; border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); cursor: pointer; letter-spacing: 1px;
+    text-transform: uppercase; transition: all 0.15s; flex: 1;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.cut-btn { border-color: var(--accent); color: var(--accent); }
+  button.cut-btn:hover { background: var(--accent); color: #fff; }
+  button.reset-btn { border-color: var(--accent3); color: var(--accent3); }
+  button.reset-btn:hover { background: var(--accent3); color: #fff; }
+  #canvas-col {
+    flex: 1; display: flex; flex-direction: column; min-width: 0;
+  }
+  #canvas-toolbar {
+    display: flex; gap: 6px; padding: 6px 10px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #canvas-toolbar button {
+    flex: 0; padding: 5px 12px; font-size: 10px;
+  }
+  #canvas-wrap {
+    flex: 1; display: flex; align-items: center;
+    justify-content: center; position: relative;
+  }
+  canvas { background: #08080e; border: 1px solid var(--border); }
+  #info-bar {
+    position: absolute; bottom: 12px; left: 12px;
+    font-size: 10px; color: var(--text-dim); line-height: 1.6;
+  }
+  #info-bar span { color: var(--accent2); font-family: 'IBM Plex Sans', sans-serif; font-weight: 500; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; }
+  .checkbox-row input[type="checkbox"] { accent-color: var(--accent); }
+  .checkbox-row label { font-size: 11px; color: var(--text); }
+  .scale-info {
+    font-size: 9px; color: var(--text-dim); margin-top: 2px;
+    font-style: italic;
+  }
+  #plot-area {
+    height: 200px; min-height: 200px;
+    background: var(--panel); border-top: 1px solid var(--border);
+    display: none; position: relative;
+  }
+  #plot-area.visible { display: flex; }
+  #plotCanvas {
+    flex: 1; background: #08080e;
+  }
+  #sweepStatus {
+    position: absolute; top: 8px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px; color: var(--accent2);
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+  button.sweep-btn { border-color: #cc8800; color: #cc8800; }
+  button.sweep-btn:hover { background: #cc8800; color: #fff; }
+  button.sweep-btn.running { border-color: var(--accent); color: var(--accent); }
+  .param-row select {
+    flex: 1; min-width: 0;
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 11px;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    padding: 3px 6px; border-radius: 2px; cursor: pointer;
+  }
+  .param-row select:hover { border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div id="main-row">
+<div id="sidebar">
+  <h1>Rope Cut Sim</h1>
+
+  <div class="section-label" data-collapse="geo">Geometry <span class="collapse-arrow">▾</span></div>
+  <div class="section-body" id="geo">
+    <div class="param-row">
+      <label>Post Diameter</label>
+      <input type="range" id="postDiam" min="5" max="200" value="200" step="1">
+      <input type="text" class="val" id="postDiamVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Rope Length</label>
+      <input type="range" id="ropeLen" min="0.1" max="5" value="1.2" step="0.01">
+      <input type="text" class="val" id="ropeLenVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Anchor Dist</label>
+      <input type="range" id="distFixed" min="0.05" max="3" value="1" step="0.01">
+      <input type="text" class="val" id="distFixedVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Cut Below Post</label>
+      <input type="range" id="cutDist" min="0.01" max="3" value="0.4" step="0.005">
+      <input type="text" class="val" id="cutDistVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Rope Diameter</label>
+      <input type="range" id="ropeDiam" min="2" max="30" value="10" step="0.5">
+      <input type="text" class="val" id="ropeDiamVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Rope Segments</label>
+      <input type="range" id="segments" min="10" max="5000" value="100" step="5">
+      <input type="text" class="val" id="segmentsVal" readonly>
+    </div>
+  </div>
+
+  <div class="section-label" data-collapse="phys">Physics <span class="collapse-arrow">▾</span></div>
+  <div class="section-body" id="phys">
+    <div class="param-row">
+      <label>Stiffness (EA)</label>
+      <input type="range" id="springK" min="2" max="8" value="2.7" step="0.05">
+      <input type="text" class="val" id="springKVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Tension</label>
+      <input type="range" id="tension" min="10" max="10000" value="300" step="10">
+      <input type="text" class="val" id="tensionVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Rope Density</label>
+      <input type="range" id="ropeDensity" min="0.01" max="1" value="0.01" step="0.005">
+      <input type="text" class="val" id="ropeDensityVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Air Drag Cd</label>
+      <input type="range" id="airCd" min="0" max="3" value="1.2" step="0.05">
+      <input type="text" class="val" id="airCdVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Damping Ratio</label>
+      <input type="range" id="damping" min="0" max="0.5" value="0.01" step="0.002">
+      <input type="text" class="val" id="dampingVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Friction (μ)</label>
+      <input type="range" id="friction" min="0" max="1" value="0.3" step="0.01">
+      <input type="text" class="val" id="frictionVal" readonly>
+    </div>
+  </div>
+
+  <div class="section-label" data-collapse="time">Time Control <span class="collapse-arrow">▾</span></div>
+  <div class="section-body" id="time">
+    <div class="param-row">
+      <label>dt / substep</label>
+      <input type="range" id="dtSubstep" min="-7" max="-3" value="-5.3" step="0.1">
+      <input type="text" class="val" id="dtSubstepVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Substeps/frame</label>
+      <input type="range" id="substeps" min="1" max="500" value="50" step="1">
+      <input type="text" class="val" id="substepsVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Slowdown</label>
+      <input type="range" id="slowdown" min="0" max="5" value="0" step="0.1">
+      <input type="text" class="val" id="slowdownVal" readonly>
+    </div>
+  </div>
+
+  <div class="section-label" data-collapse="disp">Display <span class="collapse-arrow">▾</span></div>
+  <div class="section-body" id="disp">
+    <div class="param-row">
+      <label>Zoom (px/m)</label>
+      <input type="range" id="viewScale" min="20" max="2000" value="300" step="10">
+      <input type="text" class="val" id="viewScaleVal" readonly>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="showForces">
+      <label for="showForces">Show Force Vectors</label>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="showNodes">
+      <label for="showNodes">Show Nodes</label>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="showTrail" checked>
+      <label for="showTrail">Show Cut-End Trail</label>
+    </div>
+  </div>
+
+  <div class="section-label" data-collapse="sweep">Sweep Test <span class="collapse-arrow">▾</span></div>
+  <div class="section-body" id="sweep">
+    <div class="param-row">
+      <label>X-Axis Variable</label>
+      <select id="sweepVar1">
+        <option value="cutDist" selected>Cut Below Post</option>
+        <option value="postDiam">Post Diameter</option>
+        <option value="ropeLen">Rope Length</option>
+        <option value="distFixed">Anchor Dist</option>
+        <option value="ropeDiam">Rope Diameter</option>
+        <option value="segments">Rope Segments</option>
+        <option value="springK">Stiffness (EA)</option>
+        <option value="tension">Tension</option>
+        <option value="ropeDensity">Rope Density</option>
+        <option value="airCd">Air Drag Cd</option>
+        <option value="damping">Damping Ratio</option>
+        <option value="friction">Friction (μ)</option>
+      </select>
+    </div>
+    <div class="param-row">
+      <label>X Start</label>
+      <input type="range" id="sweepStart" min="0.01" max="3" value="0.05" step="0.01">
+      <input type="text" class="val" id="sweepStartVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>X End</label>
+      <input type="range" id="sweepEnd" min="0.01" max="3" value="1.0" step="0.01">
+      <input type="text" class="val" id="sweepEndVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>X Steps</label>
+      <input type="range" id="sweepSteps" min="3" max="50" value="20" step="1">
+      <input type="text" class="val" id="sweepStepsVal" readonly>
+    </div>
+    <div class="param-row">
+      <label>Series Variable</label>
+      <select id="sweepVar2">
+        <option value="">— None —</option>
+        <option value="cutDist">Cut Below Post</option>
+        <option value="postDiam">Post Diameter</option>
+        <option value="ropeLen">Rope Length</option>
+        <option value="distFixed">Anchor Dist</option>
+        <option value="ropeDiam">Rope Diameter</option>
+        <option value="segments">Rope Segments</option>
+        <option value="springK">Stiffness (EA)</option>
+        <option value="tension">Tension</option>
+        <option value="ropeDensity">Rope Density</option>
+        <option value="airCd">Air Drag Cd</option>
+        <option value="damping">Damping Ratio</option>
+        <option value="friction">Friction (μ)</option>
+      </select>
+    </div>
+    <div class="param-row" id="var2StartRow" style="display:none">
+      <label>Series Start</label>
+      <input type="range" id="sweepVar2Start" min="0" max="1" value="0" step="0.01">
+      <input type="text" class="val" id="sweepVar2StartVal" readonly>
+    </div>
+    <div class="param-row" id="var2EndRow" style="display:none">
+      <label>Series End</label>
+      <input type="range" id="sweepVar2End" min="0" max="1" value="1" step="0.01">
+      <input type="text" class="val" id="sweepVar2EndVal" readonly>
+    </div>
+    <div class="param-row" id="var2StepsRow" style="display:none">
+      <label>Series Count</label>
+      <input type="range" id="sweepVarSteps" min="2" max="10" value="5" step="1">
+      <input type="text" class="val" id="sweepVarStepsVal" readonly>
+    </div>
+    <div class="btn-row">
+      <button class="sweep-btn" id="sweepBtn">▶ Run Sweep</button>
+    </div>
+  </div>
+
+  <div id="info-bar">
+    <div>Sim Time: <span id="simTime">0.0 μs</span></div>
+    <div>Max Velocity: <span id="maxVel">0</span> m/s</div>
+    <div>Peak Tip Speed: <span id="peakTip">0</span> m/s</div>
+    <div>Max Strain: <span id="maxStrain">0</span>%</div>
+    <div>Wave Speed: <span id="waveSpeed">0</span> m/s</div>
+    <div>Steps: <span id="stepsDone">0</span></div>
+    <div>FPS: <span id="fps">0</span></div>
+    <div class="scale-info" id="scaleInfo"></div>
+  </div>
+</div>
+
+<div id="canvas-col">
+  <div id="canvas-toolbar">
+    <button class="cut-btn" id="cutBtn">✂ Cut</button>
+    <button class="reset-btn" id="resetBtn">↺ Reset</button>
+    <button id="pauseBtn">⏸ Pause</button>
+    <button id="stepBtn">⏭ Step</button>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+  </div>
+</div>
+</div><!-- end main-row -->
+
+<div id="plot-area">
+  <canvas id="plotCanvas"></canvas>
+  <div id="sweepStatus"></div>
+</div>
+
+<script>
+// ============================================================
+// ROPE CUT PHYSICS — ALL SI UNITS
+//
+// Geometry: meters. Post diameter in mm (slider) → m internally.
+// Spring K: N/m per segment (log slider).
+// Tension: N.
+// Rope density: kg/m (linear mass density).
+// Air drag: Cd (dimensionless drag coefficient).
+//   F_drag = 0.5 * ρ_air * Cd * d_rope * v² per unit length
+// Damping: ratio (ζ), applied as c = ζ * 2 * sqrt(k * m).
+// Friction: μ (Coulomb).
+//
+// Rendering uses a computed px/m scale to fit the scene.
+// ============================================================
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+function getParam(id) { return parseFloat(document.getElementById(id).value); }
+
+// --- Display formatters ---
+function updateDisplay(id) {
+  const v = parseFloat(document.getElementById(id).value);
+  const el = document.getElementById(id + 'Val');
+  switch(id) {
+    case 'postDiam':
+      el.value = v + ' mm';
+      break;
+    case 'distFixed':
+    case 'ropeLen':
+      el.value = v < 1 ? (v*100).toFixed(0) + ' cm' : v.toFixed(2) + ' m';
+      break;
+    case 'cutDist':
+      el.value = v < 1 ? (v*100).toFixed(1) + ' cm' : v.toFixed(2) + ' m';
+      break;
+    case 'ropeDiam':
+      el.value = v + ' mm';
+      break;
+    case 'segments':
+    case 'substeps':
+      el.value = Math.round(v);
+      break;
+    case 'springK': {
+      const k = Math.pow(10, v);
+      if (k >= 1e6) el.value = (k/1e6).toFixed(1) + ' MN';
+      else if (k >= 1e3) el.value = (k/1e3).toFixed(1) + ' kN';
+      else el.value = k.toFixed(0) + ' N';
+      break;
+    }
+    case 'tension':
+      if (v >= 1000) el.value = (v/1000).toFixed(1) + ' kN';
+      else el.value = v + ' N';
+      break;
+    case 'ropeDensity':
+      el.value = v.toFixed(3) + ' kg/m';
+      break;
+    case 'airCd':
+      el.value = v.toFixed(2);
+      break;
+    case 'damping':
+      el.value = v.toFixed(3);
+      break;
+    case 'friction':
+      el.value = v.toFixed(2);
+      break;
+    case 'dtSubstep': {
+      const dt = Math.pow(10, v);
+      if (dt >= 1e-3) el.value = (dt*1000).toFixed(1) + ' ms';
+      else if (dt >= 1e-6) el.value = Math.round(dt*1e6) + ' μs';
+      else el.value = Math.round(dt*1e9) + ' ns';
+      break;
+    }
+    case 'slowdown': {
+      const f = Math.pow(10, v);
+      if (f >= 1000) el.value = Math.round(f/1000) + 'k×';
+      else if (f >= 10) el.value = Math.round(f) + '×';
+      else el.value = f.toFixed(1) + '×';
+      break;
+    }
+    case 'viewScale':
+      el.value = v + ' px/m';
+      break;
+    case 'sweepStart':
+    case 'sweepEnd':
+      // Format based on which variable is selected
+      el.value = formatSweepSliderVal('sweepVar1', v);
+      break;
+    case 'sweepVar2Start':
+    case 'sweepVar2End':
+      el.value = formatSweepSliderVal('sweepVar2', v);
+      break;
+    case 'sweepSteps':
+    case 'sweepVarSteps':
+      el.value = Math.round(v);
+      break;
+  }
+}
+
+const allSliders = ['postDiam','ropeLen','distFixed','cutDist','ropeDiam','segments',
+  'springK','tension','ropeDensity','airCd','damping','friction',
+  'dtSubstep','substeps','slowdown','viewScale',
+  'sweepStart','sweepEnd','sweepSteps','sweepVarSteps',
+  'sweepVar2Start','sweepVar2End'];
+allSliders.forEach(id => {
+  document.getElementById(id).addEventListener('input', () => updateDisplay(id));
+  updateDisplay(id);
+});
+
+// --- Editable value inputs ---
+// When user clicks a val input, make it editable. On Enter or blur, parse
+// the number and set the slider. Handles unit suffixes gracefully.
+function parseValInput(id, rawText) {
+  const slider = document.getElementById(id);
+  let text = rawText.trim().toLowerCase()
+    .replace(/,/g, '')
+    .replace(/×/g, '').replace(/x$/,'')
+    .replace(/\s*(mm|cm|m|kg\/m|kg|kn|mn|n|μs|us|ms|ns|s|px\/m)$/i, '');
+  let num = parseFloat(text);
+  if (isNaN(num)) return;
+
+  // For log-scale sliders, user types the display value — convert back
+  switch (id) {
+    case 'springK': {
+      // User types in N/kN/MN — convert to log10
+      const raw = rawText.trim().toLowerCase();
+      if (raw.includes('mn')) num = parseFloat(raw) * 1e6;
+      else if (raw.includes('kn')) num = parseFloat(raw) * 1e3;
+      slider.value = Math.log10(Math.max(1, num));
+      break;
+    }
+    case 'dtSubstep': {
+      const raw = rawText.trim().toLowerCase();
+      if (raw.includes('ms')) num = parseFloat(raw) * 1e-3;
+      else if (raw.includes('μs') || raw.includes('us')) num = parseFloat(raw) * 1e-6;
+      else if (raw.includes('ns')) num = parseFloat(raw) * 1e-9;
+      else num = parseFloat(raw);
+      slider.value = Math.log10(Math.max(1e-9, num));
+      break;
+    }
+    case 'slowdown': {
+      const raw = rawText.trim().toLowerCase().replace(/[×x]/g, '');
+      num = parseFloat(raw);
+      if (raw.includes('k')) num = parseFloat(raw) * 1000;
+      slider.value = Math.log10(Math.max(1, num));
+      break;
+    }
+    case 'distFixed': case 'ropeLen': case 'cutDist': {
+      const raw = rawText.trim().toLowerCase();
+      if (raw.includes('cm')) num = parseFloat(raw) / 100;
+      else if (raw.includes('mm')) num = parseFloat(raw) / 1000;
+      slider.value = num;
+      break;
+    }
+    case 'tension': {
+      const raw = rawText.trim().toLowerCase();
+      if (raw.includes('kn')) num = parseFloat(raw) * 1000;
+      slider.value = num;
+      break;
+    }
+    default:
+      slider.value = num;
+  }
+
+  // Clamp to slider range
+  slider.value = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), parseFloat(slider.value)));
+
+  // Trigger update
+  slider.dispatchEvent(new Event('input'));
+  slider.dispatchEvent(new Event('change'));
+}
+
+allSliders.forEach(id => {
+  const valEl = document.getElementById(id + 'Val');
+  if (!valEl) return;
+
+  // Remove readonly on focus
+  valEl.addEventListener('focus', () => {
+    valEl.removeAttribute('readonly');
+    valEl.select();
+  });
+
+  // On Enter, parse and update
+  valEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      parseValInput(id, valEl.value);
+      valEl.setAttribute('readonly', '');
+      valEl.blur();
+    } else if (e.key === 'Escape') {
+      valEl.setAttribute('readonly', '');
+      valEl.blur();
+      updateDisplay(id);
+    }
+  });
+
+  // On blur, restore display format
+  valEl.addEventListener('blur', () => {
+    valEl.setAttribute('readonly', '');
+    updateDisplay(id);
+  });
+});
+
+// State
+let nodes = [];
+let isCut = false;
+let cutIndex = -1;
+let paused = false;
+let simTime = 0;
+let trail = [];
+let frameCount = 0;
+let lastFPSTime = performance.now();
+let fpsDisplay = 0;
+let restLength = 0;
+let lastStats = { maxVel: 0, maxStrain: 0 };
+let stepOnce = false;
+let totalSteps = 0;
+let initialStrain = 0;
+let pxPerMeter = 400;
+
+// Max tip speed tracking
+let maxTipSpeed = 0;
+let maxTipSpeedX = 0;   // world coords where max was recorded
+let maxTipSpeedY = 0;
+
+// Canvas sizing
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  canvas.width = wrap.clientWidth - 4;
+  canvas.height = wrap.clientHeight - 4;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ============================================================
+// COORDINATE CONVERSION
+// World coords are in meters. We compute a scale to fit.
+// ============================================================
+let worldOffsetX = 0, worldOffsetY = 0;
+
+function worldToScreen(wx, wy) {
+  return {
+    x: (wx - worldOffsetX) * pxPerMeter,
+    y: (wy - worldOffsetY) * pxPerMeter
+  };
+}
+
+// ============================================================
+// PAN & ZOOM (mouse drag + scroll wheel)
+// ============================================================
+let isPanning = false;
+let panStartX = 0, panStartY = 0;
+let panStartOffX = 0, panStartOffY = 0;
+
+canvas.addEventListener('mousedown', (e) => {
+  isPanning = true;
+  panStartX = e.clientX;
+  panStartY = e.clientY;
+  panStartOffX = worldOffsetX;
+  panStartOffY = worldOffsetY;
+  canvas.style.cursor = 'grabbing';
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isPanning) return;
+  const dx = e.clientX - panStartX;
+  const dy = e.clientY - panStartY;
+  worldOffsetX = panStartOffX - dx / pxPerMeter;
+  worldOffsetY = panStartOffY - dy / pxPerMeter;
+});
+
+window.addEventListener('mouseup', () => {
+  isPanning = false;
+  canvas.style.cursor = 'grab';
+});
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  // Zoom centered on mouse position
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  // World position under mouse before zoom
+  const wx = worldOffsetX + mx / pxPerMeter;
+  const wy = worldOffsetY + my / pxPerMeter;
+
+  // Adjust scale
+  const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+  pxPerMeter *= zoomFactor;
+  pxPerMeter = Math.max(5, Math.min(10000, pxPerMeter));
+
+  // Update slider to match
+  const slider = document.getElementById('viewScale');
+  slider.value = Math.round(pxPerMeter);
+  updateDisplay('viewScale');
+
+  // Adjust offset so world point under mouse stays put
+  worldOffsetX = wx - mx / pxPerMeter;
+  worldOffsetY = wy - my / pxPerMeter;
+}, { passive: false });
+
+canvas.style.cursor = 'grab';
+
+// ============================================================
+// BUILD ROPE — UNIFORM TENSION, ALL SEGMENTS EQUAL
+//
+// Fixed geometry:
+//   - Post center at (0, postR), tangent at (0, 0).
+//   - Anchor at (-anchorDist, 0). anchorDist is a FIXED physical
+//     mounting distance that does NOT change with tension.
+//
+// ropeLen = total rest length of the rope (doesn't change with
+//   segment count — more segments = finer subdivision, same rope).
+// segRestLen = ropeLen / nSeg  (constant for given ropeLen & nSeg)
+// segStretchedLen = segRestLen + T / K
+//
+// Node placement walks at uniform segStretchedLen from the anchor:
+//   1. Horizontal: rightward from (-anchorDist, 0) toward (0, 0).
+//      Nodes placed at segStretchedLen spacing until we reach the
+//      post tangent. The last horizontal node snaps to (0, 0).
+//   2. Arc: walk along post surface at segStretchedLen arc-distance
+//      per step (angle = segStretchedLen / postR per step) from
+//      top (-π/2) toward right (0). Clamped to 90° total.
+//   3. Vertical: downward from arc exit at segStretchedLen spacing.
+//
+// The number of segments in each section is determined by the
+// geometry — NOT by rest-length ratios. This means changing
+// nSeg subdivides the same rope finer without changing lengths.
+// ============================================================
+let postCenterX = 0, postCenterY = 0;
+
+function buildRope() {
+  const postR = getParam('postDiam') / 2 / 1000;
+  const nSeg = Math.round(getParam('segments'));
+  const totalRestLen = getParam('ropeLen');
+  const anchorDist = getParam('distFixed');       // FIXED physical distance
+  const ropeDensity = getParam('ropeDensity');
+  const springK = Math.pow(10, getParam('springK'));
+  const tension = getParam('tension');
+
+  const segRestLen = totalRestLen / nSeg;
+  const massPerNode = ropeDensity * segRestLen;
+  const nNodes = nSeg + 1;
+
+  restLength = segRestLen;
+
+  // Axial stiffness EA (N) — material property of the rope.
+  // Per-segment K = EA / segRestLen (shorter segment = stiffer, correct physics).
+  // Strain = T / EA (independent of segment count AND rope length).
+  // Total elongation = T * ropeLen / EA (proportional to rope length).
+  const EA = Math.pow(10, getParam('springK'));  // axial stiffness in N
+  const kSeg = EA / segRestLen;                   // per-segment stiffness
+
+  // Uniform stretched length for every segment
+  // F = kSeg * (L - L0) = T  →  L = L0 + T/kSeg = L0 * (1 + T/EA)
+  const segStretchedLen = segRestLen + tension / kSeg;
+  initialStrain = tension / EA;  // T/EA, independent of segRestLen
+
+  // Post at origin
+  const cx = 0, cy = postR;
+  postCenterX = cx;
+  postCenterY = cy;
+
+  // Rope center-line radius = post radius + half rope diameter
+  const ropeR = getParam('ropeDiam') / 2 / 1000;  // half rope diameter in m
+  const wrapR = postR + ropeR;  // radius at which rope center-line sits
+
+  // Walk along the path and assign each node a position.
+  // Total stretched rope length = nSeg * segStretchedLen.
+  // Path sections:
+  //   Horizontal: length = anchorDist (fixed)
+  //   Arc: center-line arc length = wrapR * π/2
+  //   Vertical: remainder
+  const arcLen = wrapR * (Math.PI / 2);
+  const totalStretchedLen = nSeg * segStretchedLen;
+  const vertStretchedLen = Math.max(0, totalStretchedLen - anchorDist - arcLen);
+
+  nodes = [];
+  for (let i = 0; i < nNodes; i++) {
+    // Distance along the stretched rope from the anchor
+    const s = i * segStretchedLen;
+    let x, y;
+
+    if (s <= anchorDist) {
+      // Horizontal section: rope center at y = -(wrapR - postR) = -ropeR
+      // Actually: post center at (0, postR). Top of wrap circle is at
+      // y = postR - wrapR = postR - postR - ropeR = -ropeR
+      x = -anchorDist + s;
+      y = -ropeR;
+    } else if (s <= anchorDist + arcLen) {
+      // Arc section: walk along wrap radius
+      const arcS = s - anchorDist;
+      const angle = -Math.PI / 2 + arcS / wrapR;
+      const clampedAngle = Math.min(angle, 0);
+      x = cx + wrapR * Math.cos(clampedAngle);
+      y = cy + wrapR * Math.sin(clampedAngle);
+    } else {
+      // Vertical section: rope center at x = wrapR (offset from post center)
+      const vertS = s - anchorDist - arcLen;
+      x = cx + wrapR;
+      y = cy + vertS;
+    }
+
+    nodes.push({ x, y, vx: 0, vy: 0, fx: 0, fy: 0, mass: massPerNode, fixed: i === 0 });
+  }
+
+  // Endpoint nodes have only one spring attached → half mass
+  // This is standard for lumped-mass spring chains and ensures
+  // convergent behavior as segment count increases.
+  if (nodes.length > 0) nodes[0].mass = massPerNode / 2;
+  if (nodes.length > 1) nodes[nodes.length - 1].mass = massPerNode / 2;
+
+  // Scale from slider
+  pxPerMeter = getParam('viewScale');
+  worldOffsetX = cx - (canvas.width * 0.55) / pxPerMeter;
+  worldOffsetY = cy - (canvas.height * 0.35) / pxPerMeter;
+
+  // Count segments per section for display
+  let nH = 0, nA = 0, nV = 0;
+  for (let i = 0; i < nSeg; i++) {
+    const s = i * segStretchedLen;
+    if (s < anchorDist) nH++;
+    else if (s < anchorDist + arcLen) nA++;
+    else nV++;
+  }
+
+  const totalElongation = tension * totalRestLen / EA;
+  // Critical timestep for stability: dt_crit = 2 * sqrt(m / k_seg)
+  const dtCrit = 2 * Math.sqrt(massPerNode / kSeg);
+  const dtCritStr = dtCrit >= 1e-3 ? (dtCrit*1e3).toFixed(1) + 'ms'
+    : dtCrit >= 1e-6 ? (dtCrit*1e6).toFixed(0) + 'μs'
+    : (dtCrit*1e9).toFixed(0) + 'ns';
+
+  document.getElementById('scaleInfo').textContent =
+    'Seg L₀: ' + (segRestLen * 1000).toFixed(1) + 'mm | ' +
+    'ΔL: ' + (totalElongation * 1000).toFixed(1) + 'mm | Strain: ' +
+    (initialStrain * 100).toFixed(2) + '% | dt_crit: ' + dtCritStr;
+
+  isCut = false; simTime = 0; trail = []; totalSteps = 0;
+  lastStats = { maxVel: 0, maxStrain: 0 };
+  maxTipSpeed = 0; maxTipSpeedX = 0; maxTipSpeedY = 0;
+  updateCutIndex();
+}
+
+// ============================================================
+// CUT INDEX — computed from cutDist (distance below the post).
+// cutDist = fixed distance in meters below where the rope exits
+// the post arc. This is a world-space measurement anchored to
+// the post — it does NOT move when tension stretches the rope.
+// We find the node whose world Y is closest to the target.
+// ============================================================
+let cutReachable = true;
+
+function updateCutIndex() {
+  const postR = getParam('postDiam') / 2 / 1000;
+  const cutDistBelow = getParam('cutDist');
+  const nNodes = nodes.length;
+
+  // The rope exits the post arc at world Y = postCenterY
+  // (3 o'clock position on the post circle).
+  // Cut target is at a fixed world Y:
+  const cutWorldY = postCenterY + cutDistBelow;
+
+  // Check if the rope reaches this position
+  const lastNode = nodes[nNodes - 1];
+  if (lastNode.y < cutWorldY - 1e-6) {
+    cutIndex = nNodes - 1;
+    cutReachable = false;
+    return;
+  }
+
+  cutReachable = true;
+
+  // Find the node on the vertical section closest to cutWorldY.
+  // Vertical section nodes have y >= postCenterY (below the arc exit).
+  // We search ALL nodes and find the one closest to the target Y
+  // that is in the vertical portion (y >= postCenterY - small epsilon).
+  let bestD = Infinity;
+  cutIndex = nNodes - 1;
+  for (let i = 1; i < nNodes; i++) {
+    const nd = nodes[i];
+    // Only consider nodes that are below the arc exit point
+    if (nd.y >= postCenterY - 0.001) {
+      const d = Math.abs(nd.y - cutWorldY);
+      if (d < bestD) { bestD = d; cutIndex = i; }
+    }
+  }
+}
+
+function init() {
+  buildRope();
+  const rho = getParam('ropeDensity');
+  const T = getParam('tension');
+  document.getElementById('waveSpeed').textContent = Math.sqrt(T / rho).toFixed(0);
+}
+init();
+
+// Buttons
+document.getElementById('cutBtn').addEventListener('click', () => {
+  if (!isCut) {
+    isCut = true; simTime = 0; trail = []; totalSteps = 0;
+    // Cut node becomes a free endpoint → half mass
+    if (cutIndex > 0 && cutIndex < nodes.length) {
+      nodes[cutIndex].mass = nodes[cutIndex].mass / 2;
+    }
+  }
+});
+document.getElementById('resetBtn').addEventListener('click', init);
+document.getElementById('pauseBtn').addEventListener('click', () => {
+  paused = !paused;
+  document.getElementById('pauseBtn').textContent = paused ? '▶ Play' : '⏸ Pause';
+});
+document.getElementById('stepBtn').addEventListener('click', () => {
+  if (!isCut) {
+    isCut = true; simTime = 0; trail = []; totalSteps = 0;
+    if (cutIndex > 0 && cutIndex < nodes.length) {
+      nodes[cutIndex].mass = nodes[cutIndex].mass / 2;
+    }
+  }
+  stepOnce = true;
+});
+
+['postDiam','segments','ropeLen','distFixed','springK','tension','ropeDensity','ropeDiam'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => { if (!isCut) init(); });
+});
+
+// Cut distance only updates the marker, does NOT rebuild the rope
+document.getElementById('cutDist').addEventListener('input', () => {
+  if (!isCut) updateCutIndex();
+});
+
+// Zoom slider updates the scale and view offset without rebuilding
+document.getElementById('viewScale').addEventListener('input', () => {
+  pxPerMeter = getParam('viewScale');
+  worldOffsetX = postCenterX - (canvas.width * 0.55) / pxPerMeter;
+  worldOffsetY = postCenterY - (canvas.height * 0.35) / pxPerMeter;
+});
+
+// ============================================================
+// PHYSICS STEP — all in SI units (meters, kg, N, seconds)
+// ============================================================
+function physicsStep(dt) {
+  const EA = Math.pow(10, getParam('springK'));       // axial stiffness
+  const kSeg = EA / restLength;                        // per-segment K = EA / L0
+  const Cd = getParam('airCd');                       // dimensionless
+  const ropeDiamM = getParam('ropeDiam') / 1000;      // mm → m
+  const dampRatio = getParam('damping');               // ζ
+  const postR = getParam('postDiam') / 2 / 1000;      // mm → m
+  const mu = getParam('friction');
+  const rhoAir = 1.225;  // kg/m³
+
+  // Post center in world coords (set during buildRope)
+  const cx = postCenterX;
+  const cy = postCenterY;
+
+  const endIdx = isCut ? cutIndex : nodes.length - 1;
+
+  for (let i = 0; i <= endIdx; i++) { nodes[i].fx = 0; nodes[i].fy = 0; }
+
+  // Spring + damping forces
+  let maxStrain = 0;
+  for (let i = 0; i < endIdx; i++) {
+    const a = nodes[i], b = nodes[i + 1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1e-15) continue;
+
+    const stretch = dist - restLength;
+    const strain = Math.abs(stretch) / restLength;
+    if (strain > maxStrain) maxStrain = strain;
+
+    const nx = dx / dist, ny = dy / dist;
+    const springF = kSeg * stretch;
+
+    // Critical damping force: c = ζ * 2 * sqrt(k * m)
+    const avgMass = (a.mass + b.mass) / 2;
+    const c = dampRatio * 2 * Math.sqrt(kSeg * avgMass);
+    const relVel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+    const dampF = c * relVel;
+
+    const totalF = springF + dampF;
+    const ffx = totalF * nx, ffy = totalF * ny;
+    a.fx += ffx; a.fy += ffy;
+    b.fx -= ffx; b.fy -= ffy;
+  }
+
+  // Air drag: F = 0.5 * ρ_air * Cd * d * L_seg * v² (per node)
+  // Each node "owns" ~segLen of rope
+  const segLen = restLength; // approximate
+  for (let i = 0; i <= endIdx; i++) {
+    const nd = nodes[i];
+    const spd = Math.sqrt(nd.vx * nd.vx + nd.vy * nd.vy);
+    if (spd > 1e-12) {
+      const dragF = 0.5 * rhoAir * Cd * ropeDiamM * segLen * spd * spd;
+      nd.fx -= (nd.vx / spd) * dragF;
+      nd.fy -= (nd.vy / spd) * dragF;
+    }
+  }
+
+  // Symplectic Euler
+  let maxVel = 0;
+  for (let i = 0; i <= endIdx; i++) {
+    const nd = nodes[i];
+    if (nd.fixed) continue;
+    nd.vx += (nd.fx / nd.mass) * dt;
+    nd.vy += (nd.fy / nd.mass) * dt;
+    nd.x += nd.vx * dt;
+    nd.y += nd.vy * dt;
+    const spd = Math.sqrt(nd.vx * nd.vx + nd.vy * nd.vy);
+    if (spd > maxVel) maxVel = spd;
+  }
+
+  // Post collision (in world coords)
+  const collR = postR + ropeDiamM / 2;
+  for (let i = 0; i <= endIdx; i++) {
+    const nd = nodes[i];
+    if (nd.fixed) continue;
+    const dx = nd.x - cx, dy = nd.y - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < collR) {
+      const nx = dx / (dist || 1e-15), ny = dy / (dist || 1e-15);
+      nd.x = cx + nx * collR;
+      nd.y = cy + ny * collR;
+      const vn = nd.vx * nx + nd.vy * ny;
+      if (vn < 0) {
+        nd.vx -= vn * nx; nd.vy -= vn * ny;
+        const tx = -ny, ty = nx;
+        const vt = nd.vx * tx + nd.vy * ty;
+        const fMax = mu * Math.abs(vn * nd.mass / dt); // friction impulse limit
+        const tSpd = Math.abs(vt);
+        if (tSpd > 1e-12) {
+          const maxDv = fMax * dt / nd.mass;
+          const reduce = Math.min(maxDv, tSpd);
+          const sgn = vt > 0 ? 1 : -1;
+          nd.vx -= sgn * reduce * tx; nd.vy -= sgn * reduce * ty;
+        }
+      }
+    }
+  }
+
+  return { maxVel, maxStrain };
+}
+
+// ============================================================
+// STRAIN COLOR
+// ============================================================
+function strainColor(strain, refStrain) {
+  const ref = refStrain > 0 ? refStrain * 1.5 : 0.01;
+  const t = Math.min(strain / ref, 1);
+  let r, g, b;
+  if (t < 0.33) {
+    const u = t / 0.33;
+    r = Math.round(34 + u * 186); g = Math.round(204 - u * 4); b = Math.round(102 - u * 80);
+  } else if (t < 0.66) {
+    const u = (t - 0.33) / 0.33;
+    r = Math.round(220 + u * 35); g = Math.round(200 - u * 130); b = Math.round(22 - u * 22);
+  } else {
+    const u = (t - 0.66) / 0.34;
+    r = 255; g = Math.round(70 - u * 70); b = 0;
+  }
+  return `rgb(${r},${g},${b})`;
+}
+
+// ============================================================
+// DRAW — world coords → screen via worldToScreen
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const postR = getParam('postDiam') / 2 / 1000;
+  const ropeDiamM = getParam('ropeDiam') / 1000;
+  const cx = postCenterX;
+  const cy = postCenterY;
+  const n = nodes.length;
+  const endIdx = isCut ? cutIndex : n - 1;
+  const showForces = document.getElementById('showForces').checked;
+  const showNodes = document.getElementById('showNodes').checked;
+  const showTrail = document.getElementById('showTrail').checked;
+
+  const ropeThickPx = Math.max(2, ropeDiamM * pxPerMeter);
+
+  // Grid (every 10cm in world)
+  ctx.strokeStyle = '#1a1a2a'; ctx.lineWidth = 0.5;
+  const gridM = 0.1;
+  const gridPx = gridM * pxPerMeter;
+  if (gridPx > 15) {
+    for (let gx = 0; gx < canvas.width; gx += gridPx) {
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, canvas.height); ctx.stroke();
+    }
+    for (let gy = 0; gy < canvas.height; gy += gridPx) {
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(canvas.width, gy); ctx.stroke();
+    }
+  }
+
+  // Scale bar (10cm)
+  const barLen = 0.1 * pxPerMeter;
+  const barX = canvas.width - 20 - barLen;
+  const barY = 25;
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(barX, barY); ctx.lineTo(barX + barLen, barY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(barX, barY - 5); ctx.lineTo(barX, barY + 5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(barX + barLen, barY - 5); ctx.lineTo(barX + barLen, barY + 5); ctx.stroke();
+  ctx.fillStyle = '#666'; ctx.font = '10px JetBrains Mono';
+  ctx.textAlign = 'center'; ctx.fillText('10 cm', barX + barLen / 2, barY + 16);
+
+  // Post
+  const postScreen = worldToScreen(cx, cy);
+  const postRpx = postR * pxPerMeter;
+  ctx.beginPath(); ctx.arc(postScreen.x, postScreen.y, postRpx, 0, Math.PI * 2);
+  ctx.fillStyle = '#15152a'; ctx.fill();
+  ctx.strokeStyle = '#555580'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#555580'; ctx.font = '11px JetBrains Mono';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('POST', postScreen.x, postScreen.y);
+
+  // Fixed point marker
+  if (n > 0) {
+    const fp = worldToScreen(nodes[0].x, nodes[0].y);
+    ctx.strokeStyle = '#888'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(fp.x, fp.y - 8); ctx.lineTo(fp.x - 7, fp.y - 18); ctx.lineTo(fp.x + 7, fp.y - 18);
+    ctx.closePath(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fp.x - 11, fp.y - 18); ctx.lineTo(fp.x + 11, fp.y - 18); ctx.stroke();
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath(); ctx.moveTo(fp.x + i * 5 - 3, fp.y - 23); ctx.lineTo(fp.x + i * 5 + 3, fp.y - 18); ctx.stroke();
+    }
+  }
+
+  // Trail
+  if (showTrail && trail.length > 1) {
+    ctx.beginPath();
+    const tp0 = worldToScreen(trail[0].x, trail[0].y);
+    ctx.moveTo(tp0.x, tp0.y);
+    for (let i = 1; i < trail.length; i++) {
+      const tp = worldToScreen(trail[i].x, trail[i].y);
+      ctx.lineTo(tp.x, tp.y);
+    }
+    ctx.strokeStyle = 'rgba(255,150,50,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+  }
+
+  // Rope segments with strain coloring
+  ctx.lineWidth = ropeThickPx; ctx.lineCap = 'round';
+  const drawEnd = isCut ? endIdx : n - 1;
+  for (let i = 0; i < drawEnd; i++) {
+    const a = nodes[i], b = nodes[i + 1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const stretch = dist - restLength;
+    const strain = Math.abs(stretch) / (restLength || 1e-10);
+    const sa = worldToScreen(a.x, a.y);
+    const sb = worldToScreen(b.x, b.y);
+    ctx.beginPath(); ctx.moveTo(sa.x, sa.y); ctx.lineTo(sb.x, sb.y);
+    ctx.strokeStyle = strainColor(strain, initialStrain);
+    ctx.stroke();
+  }
+
+  // Cut marker — drawn at the FIXED world position (distance below post)
+  if (!isCut) {
+    // Tension arrow at free end
+    const last = worldToScreen(nodes[n - 1].x, nodes[n - 1].y);
+    ctx.fillStyle = '#ccc'; ctx.font = 'bold 13px JetBrains Mono'; ctx.textAlign = 'left';
+    ctx.fillText('↓ T', last.x + 12, last.y + 5);
+
+    // Draw the cut line at the fixed world Y position
+    const postR = getParam('postDiam') / 2 / 1000;
+    const ropeR = getParam('ropeDiam') / 2 / 1000;
+    const cutDistBelow = getParam('cutDist');
+    const cutWorldY = postCenterY + cutDistBelow;
+    const cutWorldX = postCenterX + postR + ropeR; // vertical section X (wrap radius)
+    const cutScreen = worldToScreen(cutWorldX, cutWorldY);
+
+    // Always draw the green line at the fixed position
+    ctx.beginPath();
+    ctx.moveTo(cutScreen.x - 16, cutScreen.y);
+    ctx.lineTo(cutScreen.x + 16, cutScreen.y);
+    ctx.strokeStyle = cutReachable ? '#33ff88' : '#ff664488';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    if (!cutReachable) {
+      ctx.fillStyle = '#ff6644'; ctx.font = '10px JetBrains Mono'; ctx.textAlign = 'center';
+      ctx.fillText('rope too short', cutScreen.x, cutScreen.y + 16);
+    }
+  }
+
+  // Nodes
+  if (showNodes) {
+    for (let i = 0; i <= endIdx; i++) {
+      const sp = worldToScreen(nodes[i].x, nodes[i].y);
+      ctx.beginPath(); ctx.arc(sp.x, sp.y, 2, 0, Math.PI * 2);
+      ctx.fillStyle = nodes[i].fixed ? '#ffff00' : '#ff8866'; ctx.fill();
+    }
+  }
+
+  // Force vectors
+  if (showForces) {
+    const forceScale = 0.5 / pxPerMeter; // scale force to reasonable arrow length in world coords
+    for (let i = 0; i <= endIdx; i++) {
+      if (nodes[i].fixed) continue;
+      const nd = nodes[i];
+      const fm = Math.sqrt(nd.fx * nd.fx + nd.fy * nd.fy);
+      if (fm < 0.01) continue;
+      const sp = worldToScreen(nd.x, nd.y);
+      const ep = worldToScreen(nd.x + nd.fx * forceScale, nd.y + nd.fy * forceScale);
+      ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(ep.x, ep.y);
+      ctx.strokeStyle = 'rgba(80,160,255,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+  }
+
+  // Max tip speed marker (red dot with speed label)
+  if (maxTipSpeed > 0) {
+    const mp = worldToScreen(maxTipSpeedX, maxTipSpeedY);
+    ctx.beginPath();
+    ctx.arc(mp.x, mp.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff2222';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    const speedStr = maxTipSpeed >= 1000
+      ? (maxTipSpeed / 1000).toFixed(2) + ' km/s'
+      : maxTipSpeed.toFixed(1) + ' m/s';
+    ctx.fillStyle = '#ff4444';
+    ctx.font = "bold 11px 'IBM Plex Sans', sans-serif";
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(speedStr, mp.x + 8, mp.y - 4);
+  }
+}
+
+// ============================================================
+// TIP SPEED — average speed of the last 1cm of rope at cut end
+// Walks backward from cutIndex, summing segment lengths until
+// at least 1cm is covered, then averages those nodes' speeds.
+// ============================================================
+function getTipSpeed() {
+  if (cutIndex < 1 || cutIndex >= nodes.length) return 0;
+  const minLen = 0.01; // 1cm
+  let cumLen = 0;
+  let sumSpd = 0;
+  let count = 0;
+
+  // Always include the cut-end node
+  const tip = nodes[cutIndex];
+  sumSpd += Math.sqrt(tip.vx * tip.vx + tip.vy * tip.vy);
+  count++;
+
+  // Walk backward, adding nodes until we've covered >= 1cm
+  for (let i = cutIndex; i > 0; i--) {
+    const a = nodes[i - 1], b = nodes[i];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    cumLen += Math.sqrt(dx * dx + dy * dy);
+    sumSpd += Math.sqrt(a.vx * a.vx + a.vy * a.vy);
+    count++;
+    if (cumLen >= minLen) break;
+  }
+
+  return sumSpd / count;
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+let lastTime = 0;
+
+function loop(timestamp) {
+  requestAnimationFrame(loop);
+  if (!lastTime) lastTime = timestamp;
+  const frameDt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+
+  frameCount++;
+  if (timestamp - lastFPSTime > 500) {
+    fpsDisplay = Math.round(frameCount / ((timestamp - lastFPSTime) / 1000));
+    frameCount = 0; lastFPSTime = timestamp;
+  }
+
+  if (isCut && (!paused || stepOnce)) {
+    const dtSub = Math.pow(10, getParam('dtSubstep'));
+    const maxSub = Math.round(getParam('substeps'));
+    const slowdown = Math.pow(10, getParam('slowdown'));
+
+    const simDtTarget = frameDt / slowdown;
+    const stepsNeeded = Math.max(1, Math.round(simDtTarget / dtSub));
+    const stepsToRun = Math.min(stepsNeeded, maxSub);
+
+    for (let s = 0; s < stepsToRun; s++) {
+      lastStats = physicsStep(dtSub);
+      simTime += dtSub;
+      totalSteps++;
+
+      // Track max speed — average of last 1cm of rope at cut end
+      if (cutIndex < nodes.length) {
+        const avgSpeed = getTipSpeed();
+        if (avgSpeed > maxTipSpeed) {
+          maxTipSpeed = avgSpeed;
+          maxTipSpeedX = nodes[cutIndex].x;
+          maxTipSpeedY = nodes[cutIndex].y;
+        }
+      }
+    }
+
+    if (cutIndex < nodes.length) {
+      trail.push({ x: nodes[cutIndex].x, y: nodes[cutIndex].y });
+      if (trail.length > 3000) trail.shift();
+    }
+    stepOnce = false;
+  }
+
+  draw();
+
+  // Info bar
+  const us = simTime * 1e6;
+  document.getElementById('simTime').textContent =
+    us < 1000 ? us.toFixed(1) + ' μs' :
+    us < 1e6 ? (simTime * 1e3).toFixed(3) + ' ms' :
+    simTime.toFixed(4) + ' s';
+  document.getElementById('maxVel').textContent = lastStats.maxVel.toFixed(1);
+  document.getElementById('peakTip').textContent = maxTipSpeed >= 1000
+    ? (maxTipSpeed / 1000).toFixed(2) + ' km'
+    : maxTipSpeed.toFixed(1);
+  document.getElementById('maxStrain').textContent = (lastStats.maxStrain * 100).toFixed(1);
+  document.getElementById('stepsDone').textContent = totalSteps;
+  document.getElementById('fps').textContent = fpsDisplay;
+
+  // Update wave speed on the fly
+  const rho = getParam('ropeDensity');
+  const T = getParam('tension');
+  document.getElementById('waveSpeed').textContent = Math.sqrt(T / rho).toFixed(0);
+}
+
+requestAnimationFrame(loop);
+
+// ============================================================
+// SWEEP TEST
+// ============================================================
+let sweepAllData = [];
+let sweepRunning = false;
+let sweepAbort = false;
+
+const sweepColors = [
+  '#ff6633', '#33bbff', '#33ff88', '#ffcc33', '#cc66ff',
+  '#ff3366', '#66ffcc', '#ff9933', '#6699ff', '#99ff33'
+];
+
+// Parameter metadata: slider ranges and display info
+function getParamMeta(paramId) {
+  const el = document.getElementById(paramId);
+  if (!el) return { min: 0, max: 1, step: 0.01, val: 0 };
+  return {
+    min: parseFloat(el.min),
+    max: parseFloat(el.max),
+    step: parseFloat(el.step),
+    val: parseFloat(el.value)
+  };
+}
+
+function getParamLabel(paramId) {
+  const labels = {
+    cutDist: 'Cut Dist', postDiam: 'Post Ø', ropeLen: 'Rope L',
+    distFixed: 'Anchor', ropeDiam: 'Rope Ø', segments: 'Segs',
+    springK: 'EA', tension: 'Tension', ropeDensity: 'Density',
+    airCd: 'Cd', damping: 'Damping', friction: 'Friction'
+  };
+  return labels[paramId] || paramId;
+}
+
+function formatParamVal(paramId, val) {
+  switch (paramId) {
+    case 'postDiam': return val + 'mm';
+    case 'cutDist': case 'ropeLen': case 'distFixed':
+      return val < 1 ? (val * 100).toFixed(0) + 'cm' : val.toFixed(2) + 'm';
+    case 'ropeDiam': return val + 'mm';
+    case 'segments': return Math.round(val).toString();
+    case 'springK': {
+      const k = Math.pow(10, val);
+      return k >= 1e6 ? (k/1e6).toFixed(1)+'MN' : k >= 1e3 ? (k/1e3).toFixed(1)+'kN' : k.toFixed(0)+'N';
+    }
+    case 'tension': return val >= 1000 ? (val/1000).toFixed(1)+'kN' : val+'N';
+    case 'ropeDensity': return val.toFixed(3) + 'kg/m';
+    case 'airCd': return 'Cd=' + val.toFixed(2);
+    case 'damping': return 'ζ=' + val.toFixed(3);
+    case 'friction': return 'μ=' + val.toFixed(2);
+    default: return String(val);
+  }
+}
+
+function formatSweepSliderVal(dropdownId, val) {
+  const sel = document.getElementById(dropdownId);
+  const paramId = sel ? sel.value : '';
+  if (!paramId) return val.toFixed(2);
+  return formatParamVal(paramId, val);
+}
+
+// Sync sweep slider ranges to match the selected variable
+function syncSweepSliders(dropdownId, startId, endId) {
+  const sel = document.getElementById(dropdownId);
+  const paramId = sel.value;
+  if (!paramId) return;
+  const meta = getParamMeta(paramId);
+  const startEl = document.getElementById(startId);
+  const endEl = document.getElementById(endId);
+  startEl.min = meta.min; startEl.max = meta.max; startEl.step = meta.step;
+  endEl.min = meta.min; endEl.max = meta.max; endEl.step = meta.step;
+  // Set to full range of the source slider
+  startEl.value = meta.min;
+  endEl.value = meta.max;
+  updateDisplay(startId);
+  updateDisplay(endId);
+}
+
+// Wire dropdown changes
+document.getElementById('sweepVar1').addEventListener('change', () => {
+  syncSweepSliders('sweepVar1', 'sweepStart', 'sweepEnd');
+});
+
+document.getElementById('sweepVar2').addEventListener('change', () => {
+  const v = document.getElementById('sweepVar2').value;
+  const show = v !== '';
+  document.getElementById('var2StartRow').style.display = show ? 'flex' : 'none';
+  document.getElementById('var2EndRow').style.display = show ? 'flex' : 'none';
+  document.getElementById('var2StepsRow').style.display = show ? 'flex' : 'none';
+  if (show) syncSweepSliders('sweepVar2', 'sweepVar2Start', 'sweepVar2End');
+});
+
+// Init primary sweep sliders to match cutDist
+syncSweepSliders('sweepVar1', 'sweepStart', 'sweepEnd');
+
+// Generalized headless sim: takes a dict of param overrides
+function runHeadlessSim(overrides) {
+  const origVals = {};
+  for (const [k, v] of Object.entries(overrides || {})) {
+    origVals[k] = document.getElementById(k).value;
+    document.getElementById(k).value = v;
+  }
+
+  buildRope();
+  updateCutIndex();
+
+  const dtSub = Math.pow(10, getParam('dtSubstep'));
+  const simEndTime = 0.1;
+
+  isCut = true;
+  simTime = 0;
+
+  if (cutIndex > 0 && cutIndex < nodes.length) {
+    nodes[cutIndex].mass = nodes[cutIndex].mass / 2;
+  }
+
+  let localMaxSpeed = 0;
+  while (simTime < simEndTime) {
+    physicsStep(dtSub);
+    simTime += dtSub;
+
+    if (cutIndex < nodes.length) {
+      const avgSpd = getTipSpeed();
+      if (avgSpd > localMaxSpeed) localMaxSpeed = avgSpd;
+    }
+  }
+
+  for (const [k, v] of Object.entries(origVals)) {
+    document.getElementById(k).value = v;
+  }
+  isCut = false;
+
+  return localMaxSpeed;
+}
+
+// Store current sweep axis label for plot
+let sweepXLabel = 'Cut Distance Below Post';
+let sweepXParamId = 'cutDist';
+
+function drawPlot() {
+  const plotArea = document.getElementById('plot-area');
+  const plotCanvas = document.getElementById('plotCanvas');
+  plotArea.classList.add('visible');
+
+  plotCanvas.width = plotArea.clientWidth;
+  plotCanvas.height = plotArea.clientHeight;
+  const pctx = plotCanvas.getContext('2d');
+  const W = plotCanvas.width;
+  const H = plotCanvas.height;
+
+  pctx.clearRect(0, 0, W, H);
+
+  const allPoints = sweepAllData.flatMap(s => s.data);
+  if (allPoints.length < 2) return;
+
+  const margin = { top: 30, right: 150, bottom: 35, left: 65 };
+  const plotW = W - margin.left - margin.right;
+  const plotH = H - margin.top - margin.bottom;
+
+  const xMin = Math.min(...allPoints.map(d => d.xVal));
+  const xMax = Math.max(...allPoints.map(d => d.xVal));
+  const yMin = 0;
+  const yMax = Math.max(...allPoints.map(d => d.peakSpeed)) * 1.1;
+
+  function toX(v) { return margin.left + ((v - xMin) / (xMax - xMin || 1)) * plotW; }
+  function toY(v) { return margin.top + plotH - ((v - yMin) / (yMax - yMin || 1)) * plotH; }
+
+  // Grid
+  pctx.strokeStyle = '#2a2a3a'; pctx.lineWidth = 0.5;
+  for (let i = 0; i <= 5; i++) {
+    const v = yMin + (yMax - yMin) * i / 5;
+    const sy = toY(v);
+    pctx.beginPath(); pctx.moveTo(margin.left, sy); pctx.lineTo(margin.left + plotW, sy); pctx.stroke();
+    pctx.fillStyle = '#6a6a7a';
+    pctx.font = "10px 'IBM Plex Sans', sans-serif";
+    pctx.textAlign = 'right'; pctx.textBaseline = 'middle';
+    pctx.fillText(v >= 1000 ? (v/1000).toFixed(1)+'k' : v.toFixed(0), margin.left - 6, sy);
+  }
+  for (let i = 0; i <= 8; i++) {
+    const v = xMin + (xMax - xMin) * i / 8;
+    const sx = toX(v);
+    pctx.beginPath(); pctx.moveTo(sx, margin.top); pctx.lineTo(sx, margin.top + plotH); pctx.stroke();
+    pctx.fillStyle = '#6a6a7a';
+    pctx.font = "10px 'IBM Plex Sans', sans-serif";
+    pctx.textAlign = 'center'; pctx.textBaseline = 'top';
+    pctx.fillText(formatParamVal(sweepXParamId, v), sx, margin.top + plotH + 5);
+  }
+
+  // Axis labels
+  pctx.fillStyle = '#888';
+  pctx.font = "11px 'IBM Plex Sans', sans-serif";
+  pctx.textAlign = 'center';
+  pctx.fillText(sweepXLabel, margin.left + plotW / 2, H - 4);
+  pctx.save();
+  pctx.translate(12, margin.top + plotH / 2);
+  pctx.rotate(-Math.PI / 2);
+  pctx.fillText('Peak Tip Speed (m/s)', 0, 0);
+  pctx.restore();
+
+  // Title
+  pctx.fillStyle = '#aaa';
+  pctx.font = "bold 12px 'IBM Plex Sans', sans-serif";
+  pctx.textAlign = 'center';
+  pctx.fillText('Tip Speed vs ' + sweepXLabel, margin.left + plotW / 2, 14);
+
+  // Axes border
+  pctx.strokeStyle = '#555'; pctx.lineWidth = 1;
+  pctx.beginPath();
+  pctx.moveTo(margin.left, margin.top);
+  pctx.lineTo(margin.left, margin.top + plotH);
+  pctx.lineTo(margin.left + plotW, margin.top + plotH);
+  pctx.stroke();
+
+  // Series
+  for (const series of sweepAllData) {
+    if (series.data.length < 2) continue;
+    pctx.beginPath();
+    pctx.moveTo(toX(series.data[0].xVal), toY(series.data[0].peakSpeed));
+    for (let i = 1; i < series.data.length; i++) {
+      pctx.lineTo(toX(series.data[i].xVal), toY(series.data[i].peakSpeed));
+    }
+    pctx.strokeStyle = series.color; pctx.lineWidth = 2; pctx.stroke();
+
+    for (const d of series.data) {
+      pctx.beginPath(); pctx.arc(toX(d.xVal), toY(d.peakSpeed), 2.5, 0, Math.PI * 2);
+      pctx.fillStyle = series.color; pctx.fill();
+    }
+  }
+
+  // Legend
+  const legX = margin.left + plotW + 10;
+  let legY = margin.top + 5;
+  pctx.font = "10px 'IBM Plex Sans', sans-serif";
+  pctx.textAlign = 'left'; pctx.textBaseline = 'middle';
+  for (const series of sweepAllData) {
+    pctx.fillStyle = series.color;
+    pctx.fillRect(legX, legY - 4, 12, 8);
+    pctx.fillStyle = '#ccc';
+    pctx.fillText(series.label, legX + 16, legY);
+    legY += 14;
+    if (legY > margin.top + plotH) break;
+  }
+}
+
+async function runSweep() {
+  if (sweepRunning) { sweepAbort = true; return; }
+
+  const var1Id = document.getElementById('sweepVar1').value;
+  const var2Id = document.getElementById('sweepVar2').value;
+  const xStart = getParam('sweepStart');
+  const xEnd = getParam('sweepEnd');
+  const nXSteps = Math.round(getParam('sweepSteps'));
+
+  sweepXParamId = var1Id;
+  sweepXLabel = document.getElementById('sweepVar1').selectedOptions[0].text;
+
+  sweepAllData = [];
+  sweepRunning = true;
+  sweepAbort = false;
+
+  const btn = document.getElementById('sweepBtn');
+  btn.textContent = '■ Stop';
+  btn.classList.add('running');
+  const statusEl = document.getElementById('sweepStatus');
+
+  // Build list of series (one per var2 value, or just one if no var2)
+  const seriesList = [];
+  if (var2Id) {
+    const v2Start = getParam('sweepVar2Start');
+    const v2End = getParam('sweepVar2End');
+    const nV2 = Math.round(getParam('sweepVarSteps'));
+    for (let vi = 0; vi < nV2; vi++) {
+      const v2Val = v2Start + (v2End - v2Start) * vi / (nV2 - 1);
+      seriesList.push({
+        label: getParamLabel(var2Id) + '=' + formatParamVal(var2Id, v2Val),
+        color: sweepColors[vi % sweepColors.length],
+        var2Val: v2Val
+      });
+    }
+  } else {
+    seriesList.push({ label: 'Default', color: sweepColors[0], var2Val: null });
+  }
+
+  for (const sDef of seriesList) {
+    if (sweepAbort) break;
+    const series = { label: sDef.label, color: sDef.color, data: [] };
+    sweepAllData.push(series);
+
+    for (let i = 0; i < nXSteps; i++) {
+      if (sweepAbort) break;
+      const xVal = xStart + (xEnd - xStart) * i / (nXSteps - 1);
+
+      const overrides = { [var1Id]: xVal };
+      if (var2Id && sDef.var2Val !== null) overrides[var2Id] = sDef.var2Val;
+
+      statusEl.textContent = sDef.label + ' | ' + (i+1) + '/' + nXSteps +
+        ' (' + formatParamVal(var1Id, xVal) + ')';
+      await new Promise(r => setTimeout(r, 3));
+
+      const spd = runHeadlessSim(overrides);
+      series.data.push({ xVal, peakSpeed: spd });
+      drawPlot();
+    }
+  }
+
+  init();
+  sweepRunning = false;
+  sweepAbort = false;
+  btn.textContent = '▶ Run Sweep';
+  btn.classList.remove('running');
+  const totalRuns = sweepAllData.reduce((s, d) => s + d.data.length, 0);
+  statusEl.textContent = 'Done — ' + totalRuns + ' runs, ' + sweepAllData.length + ' series';
+  drawPlot();
+}
+
+document.getElementById('sweepBtn').addEventListener('click', runSweep);
+
+// ============================================================
+// COLLAPSIBLE SECTIONS
+// ============================================================
+document.querySelectorAll('.section-label[data-collapse]').forEach(label => {
+  label.addEventListener('click', () => {
+    const targetId = label.dataset.collapse;
+    const body = document.getElementById(targetId);
+    label.classList.toggle('collapsed');
+    body.classList.toggle('collapsed');
+  });
+});
+</script>
+</body>
+</html>
