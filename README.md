@@ -1,5 +1,7 @@
 **Demo App:** https://claude.ai/public/artifacts/aefdea4c-94b0-45de-a85b-b3174f0c6515
 
- To run the simulation press **CUT** to cut the rope. 
- If nothing happens press **PLAY**
- For step by step simulation press **PAUSE** then **STEP** to advance
+ To run the simulation press **CUT** to cut the rope.
+ 
+ If nothing happens press **PLAY**.
+ 
+ For step by step simulation press **PAUSE** then **STEP** to advance.
